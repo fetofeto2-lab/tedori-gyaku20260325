@@ -488,7 +488,7 @@
 <div class="header">
   <h1 id="header-title">手取り額から給与を逆算するツール</h1>
   <p id="header-desc">差し引き支給額（手取り）を入力すると、必要な給与支給額を計算します。<br>
-  協会けんぽ料率・令和8年度（2026年3月分〜）対応。所得税は源泉徴収税額表（月額表・甲欄）使用。<br>
+  協会けんぽ料率・令和8年度（2026年3月分〜）対応。雇用保険料率・令和8年度（2026年4月分〜）対応。所得税は令和8年分源泉徴収税額表（月額表・甲欄）使用。<br>
   <span style="font-size:0.72rem;color:#4a7c59;">📱 このファイルはスマホに保存してオフラインでも使えます</span></p>
 </div>
 
@@ -648,26 +648,35 @@
         <span class="hint">社会保険未加入でも雇用保険のみ加入の場合は「加入」を選択</span>
       </div>
       <div class="form-group">
-        <label>料率の指定</label>
+        <label>事業の種類</label>
+        <div class="radio-group">
+          <label><input type="radio" name="koyoType" value="ippan" checked> 一般の事業</label>
+          <label><input type="radio" name="koyoType" value="nourin"> 農林水産・清酒製造</label>
+          <label><input type="radio" name="koyoType" value="kensetsu"> 建設の事業</label>
+        </div>
+        <span class="hint" id="koyo-rate-hint">労働者：5/1,000　事業主：8.5/1,000</span>
+      </div>
+      <div class="form-group">
+        <label>料率の手動指定</label>
         <div class="radio-group">
           <label id="manual-koyo-btn" onclick="toggleManualKoyo()" style="cursor:pointer;">
             <input type="checkbox" id="manual-koyo-chk" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;">
             手動で料率を指定する
           </label>
         </div>
-        <span class="hint">建設業など一般事業以外の場合に使う</span>
+        <span class="hint">業種選択より優先されます</span>
       </div>
       <div id="manual-koyo-group" style="display:none; grid-column:1/-1;">
         <div class="form-grid">
           <div class="form-group">
             <label>被保険者負担率（%）</label>
-            <input type="text" id="manual-koyo-rate" value="0.6" inputmode="decimal" placeholder="例: 0.6">
-            <span class="hint">一般事業：0.6%　建設業：0.7%</span>
+            <input type="text" id="manual-koyo-rate" value="0.5" inputmode="decimal" placeholder="例: 0.5">
+            <span class="hint">一般：0.5%　農林水産・清酒・建設：0.6%</span>
           </div>
           <div class="form-group">
             <label>会社負担率（%）</label>
-            <input type="text" id="manual-koyo-employer-rate" value="0.95" inputmode="decimal" placeholder="例: 0.95">
-            <span class="hint">一般事業：0.95%　建設業：1.15%</span>
+            <input type="text" id="manual-koyo-employer-rate" value="0.85" inputmode="decimal" placeholder="例: 0.85">
+            <span class="hint">一般：0.85%　農林水産・清酒：0.95%　建設：1.05%</span>
           </div>
         </div>
       </div>
@@ -754,7 +763,7 @@
       <div style="display:flex; justify-content:space-between; align-items:flex-end;">
         <div>
           <div style="font-size:13pt; font-weight:700; color:#2d5a3d;" id="print-title">給与計算　手取り逆算シート</div>
-          <div style="font-size:8pt; color:#555; margin-top:2px;">協会けんぽ料率・令和8年度（2026年3月分〜）対応　所得税：源泉徴収税額表（月額表・甲欄）</div>
+          <div style="font-size:8pt; color:#555; margin-top:2px;">協会けんぽ料率・令和8年度（2026年3月分〜）対応　雇用保険料率・令和8年度（2026年4月分〜）対応　所得税：令和8年分源泉徴収税額表（月額表・甲欄）</div>
         </div>
         <div style="font-size:8pt; color:#555;" id="print-date"></div>
       </div>
@@ -789,7 +798,7 @@
         <table class="breakdown-table">
           <tbody id="burden-body"></tbody>
         </table>
-        <p class="note-text" style="margin-top:8px;">※雇用保険事業主負担率0.95%（一般事業）。実際の負担額は業種・事業規模により異なります。</p>
+        <p class="note-text" style="margin-top:8px;">※雇用保険料率は令和8年度（2026年4月〜）。一般事業：労働者5/1,000・事業主8.5/1,000。端数処理：50銭以下切り捨て・50銭超切り上げ（労働保険徴収法施行規則第27条）。実際の負担額は業種・事業規模により異なります。</p>
       </div>
     </div>
 
@@ -852,10 +861,15 @@ const KAIGO_RATE = 0.0081; // 1.62%÷2
 const KOSODATE_RATE = 0.00115; // 0.23%÷2
 // 厚生年金料率（本人負担）
 const KOSEI_RATE = 0.09150;
-// 雇用保険料率（被保険者負担：一般事業）
-const KOYO_RATE = 0.006;
-// 雇用保険料率（事業主負担：一般事業）
-const KOYO_EMPLOYER_RATE = 0.0095;
+// 雇用保険料率（令和8年度・2026年4月〜）業種別 [労働者負担, 事業主負担]
+const KOYO_RATES = {
+  ippan:    { worker: 0.005,  employer: 0.0085 }, // 一般の事業
+  nourin:   { worker: 0.006,  employer: 0.0095 }, // 農林水産・清酒製造
+  kensetsu: { worker: 0.006,  employer: 0.0105 }, // 建設の事業
+};
+// 後方互換用（デフォルト：一般）
+const KOYO_RATE = 0.005;
+const KOYO_EMPLOYER_RATE = 0.0085;
 
 // ===== 標準報酬月額等級テーブル =====
 // 健康保険用：50等級（上限139万円）
@@ -1304,9 +1318,12 @@ function calcTedori(kyuyo, params) {
   }
 
   // 雇用保険は社会保険と独立して判定
+  // 端数処理：50銭以下切り捨て・50銭超切り上げ（労働保険徴収法施行規則第27条）
   if (koyoFlg) {
     const rate = (manualKoyoRate != null) ? manualKoyoRate : KOYO_RATE;
-    koyo = Math.floor(soushikyu * rate);
+    const raw = soushikyu * rate;
+    const frac = raw - Math.floor(raw);
+    koyo = frac <= 0.5 ? Math.floor(raw) : Math.ceil(raw);
   }
 
   const shakaiTotal = kenpo + kaigo + kosei + koyo + kosodate;
@@ -1323,7 +1340,8 @@ function calcTedori(kyuyo, params) {
   const kenpoC    = (shakai && ageGroup !== 'over75') ? Math.floor(hyojunKenpoC * (KENPO_RATE[pref] || KENPO_RATE['other'])) : 0;
   const kaigoC    = (shakai && ageGroup === '40to64') ? Math.floor(hyojunKenpoC * KAIGO_RATE) : 0;
   const koseiC    = (shakai && ageGroup !== '70to74' && ageGroup !== 'over75') ? Math.floor(hyojunKoseiC * KOSEI_RATE) : 0;
-  const koyoC     = koyoFlg ? Math.floor(soushikyu * ((manualKoyoEmployerRate != null) ? manualKoyoEmployerRate : KOYO_EMPLOYER_RATE)) : 0;
+  const koyoCRaw = koyoFlg ? soushikyu * ((manualKoyoEmployerRate != null) ? manualKoyoEmployerRate : KOYO_EMPLOYER_RATE) : 0;
+  const koyoC    = koyoFlg ? (koyoCRaw - Math.floor(koyoCRaw) <= 0.5 ? Math.floor(koyoCRaw) : Math.ceil(koyoCRaw)) : 0;
   const kosodateC = (shakai && ageGroup !== 'over75') ? Math.floor(hyojunKenpoC * KOSODATE_RATE) : 0;
   const shakaiC   = kenpoC + kaigoC + koseiC + koyoC + kosodateC;
   const jinkenhi  = soushikyu + shakaiC; // 総人件費
@@ -1455,8 +1473,8 @@ function switchMode(mode) {
     ? '手取り額から給与を逆算するツール'
     : '給与支給額から手取りを計算するツール';
   document.getElementById('header-desc').innerHTML = isGyaku
-    ? '差し引き支給額（手取り）を入力すると、必要な給与支給額を計算します。<br>協会けんぽ料率・令和8年度（2026年3月分〜）対応。所得税は源泉徴収税額表（月額表・甲欄）使用。<br><span style="font-size:0.72rem;color:#4a7c59;">📱 このファイルはスマホに保存してオフラインでも使えます</span>'
-    : '給与支給額を入力すると、控除の内訳と手取り額を計算します。<br>協会けんぽ料率・令和8年度（2026年3月分〜）対応。所得税は源泉徴収税額表（月額表・甲欄）使用。<br><span style="font-size:0.72rem;color:#4a7c59;">📱 このファイルはスマホに保存してオフラインでも使えます</span>';
+    ? '差し引き支給額（手取り）を入力すると、必要な給与支給額を計算します。<br>協会けんぽ料率・令和8年度（2026年3月分〜）対応。雇用保険料率・令和8年度（2026年4月分〜）対応。所得税は令和8年分源泉徴収税額表（月額表・甲欄）使用。<br><span style="font-size:0.72rem;color:#4a7c59;">📱 このファイルはスマホに保存してオフラインでも使えます</span>'
+    : '給与支給額を入力すると、控除の内訳と手取り額を計算します。<br>協会けんぽ料率・令和8年度（2026年3月分〜）対応。雇用保険料率・令和8年度（2026年4月分〜）対応。所得税は令和8年分源泉徴収税額表（月額表・甲欄）使用。<br><span style="font-size:0.72rem;color:#4a7c59;">📱 このファイルはスマホに保存してオフラインでも使えます</span>';
 
   // 入力欄ラベル
   document.getElementById('input-card-title').textContent = isGyaku ? '目標手取り額' : '給与支給額';
@@ -1523,14 +1541,19 @@ function calculate() {
     }
   }
 
-  // 手動雇用保険料率
+  // 雇用保険：手動指定があれば優先、なければ業種選択から取得
+  const koyoType = document.querySelector('input[name=koyoType]:checked').value;
+  const koyoRates = KOYO_RATES[koyoType] || KOYO_RATES.ippan;
   const manualKoyoOn = document.getElementById('manual-koyo-chk').checked && koyoFlg;
   let manualKoyoRate = null, manualKoyoEmployerRate = null;
   if (manualKoyoOn) {
     const rv = parseFloat(document.getElementById('manual-koyo-rate').value);
     const re = parseFloat(document.getElementById('manual-koyo-employer-rate').value);
-    manualKoyoRate = isNaN(rv) ? null : rv / 100;
-    manualKoyoEmployerRate = isNaN(re) ? null : re / 100;
+    manualKoyoRate = isNaN(rv) ? koyoRates.worker : rv / 100;
+    manualKoyoEmployerRate = isNaN(re) ? koyoRates.employer : re / 100;
+  } else if (koyoFlg) {
+    manualKoyoRate = koyoRates.worker;
+    manualKoyoEmployerRate = koyoRates.employer;
   }
 
   const params = { shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, commuteNontax, juminzei, manualKenpo, manualKosei, manualKoyoRate, manualKoyoEmployerRate };
@@ -1630,11 +1653,11 @@ function calculate() {
   document.getElementById('result-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // 印刷用ヘッダー情報を更新
-  updatePrintHeader(shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, juminzei);
+  updatePrintHeader(shakai, koyoFlg, koyoType, pref, ageGroup, fuyouNum, commute, juminzei);
 }
 
 // ===== 印刷用ヘッダー更新 =====
-function updatePrintHeader(shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, juminzei) {
+function updatePrintHeader(shakai, koyoFlg, koyoType, pref, ageGroup, fuyouNum, commute, juminzei) {
   // タイトル
   document.getElementById('print-title').textContent =
     currentMode === 'gyaku' ? '給与計算　手取り逆算シート' : '給与計算　手取り計算シート';
@@ -1653,9 +1676,14 @@ function updatePrintHeader(shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, j
     '70to74': '70〜74歳（厚生年金なし）',
     over75:   '75歳以上（後期高齢者医療）',
   };
+  const KOYO_TYPE_LABELS = {
+    ippan:    '一般の事業',
+    nourin:   '農林水産・清酒製造',
+    kensetsu: '建設の事業',
+  };
   conditions.push(`社会保険：${shakai ? `加入（${PREF_NAMES[pref]}）` : '未加入'}`);
   conditions.push(`年齢区分：${AGE_LABELS[ageGroup] || ageGroup}`);
-  conditions.push(`雇用保険：${koyoFlg ? '加入' : '未加入'}`);
+  conditions.push(`雇用保険：${koyoFlg ? `加入（${KOYO_TYPE_LABELS[koyoType] || koyoType}）` : '未加入'}`);
   conditions.push(`扶養：${fuyouNum}人`);
   if (commute > 0) conditions.push(`通勤手当：${fmt(commute)}円`);
   if (juminzei > 0) conditions.push(`住民税：${fmt(juminzei)}円`);
@@ -1703,6 +1731,17 @@ function copyResult() {
     }, 1500);
   });
 }
+
+// ===== 雇用保険：業種変更時にヒント更新 =====
+document.querySelectorAll('input[name=koyoType]').forEach(r => {
+  r.addEventListener('change', function() {
+    const rates = KOYO_RATES[this.value] || KOYO_RATES.ippan;
+    const w = (rates.worker * 1000).toFixed(1).replace(/\.0$/, '');
+    const e = (rates.employer * 1000).toFixed(1).replace(/\.0$/, '');
+    document.getElementById('koyo-rate-hint').textContent =
+      `労働者：${w}/1,000　事業主：${e}/1,000`;
+  });
+});
 
 // ===== 手動等級指定 =====
 // 健保セレクトを50等級で初期化
@@ -1814,6 +1853,8 @@ function resetForm() {
   document.querySelector('input[name=shakai][value="1"]').checked = true;
   document.querySelector('input[name=koyo][value="1"]').checked = true;
   document.querySelector('input[name=age][value="under40"]').checked = true;
+  document.querySelector('input[name=koyoType][value="ippan"]').checked = true;
+  document.getElementById('koyo-rate-hint').textContent = '労働者：5/1,000　事業主：8.5/1,000';
 
   // 手動雇用保険料率をリセット
   const koyoChk = document.getElementById('manual-koyo-chk');
@@ -1825,8 +1866,8 @@ function resetForm() {
   koyoBtn.style.fontWeight = '';
   koyoBtn.style.boxShadow = '';
   document.getElementById('manual-koyo-group').style.display = 'none';
-  document.getElementById('manual-koyo-rate').value = '0.6';
-  document.getElementById('manual-koyo-employer-rate').value = '0.95';
+  document.getElementById('manual-koyo-rate').value = '0.5';
+  document.getElementById('manual-koyo-employer-rate').value = '0.85';
 
   // 手動等級指定をリセット
   const chk = document.getElementById('manual-grade-chk');
