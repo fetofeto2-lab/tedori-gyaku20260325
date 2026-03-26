@@ -647,7 +647,7 @@
         </div>
         <span class="hint">社会保険未加入でも雇用保険のみ加入の場合は「加入」を選択</span>
       </div>
-      <div class="form-group">
+      <div class="form-group" id="koyo-type-group">
         <label>事業の種類</label>
         <div class="radio-group">
           <label><input type="radio" name="koyoType" value="ippan" checked> 一般の事業</label>
@@ -656,7 +656,7 @@
         </div>
         <span class="hint" id="koyo-rate-hint">労働者：5/1,000　事業主：8.5/1,000</span>
       </div>
-      <div class="form-group">
+      <div class="form-group" id="koyo-manual-toggle-group">
         <label>料率の手動指定</label>
         <div class="radio-group">
           <label id="manual-koyo-btn" onclick="toggleManualKoyo()" style="cursor:pointer;">
@@ -1498,11 +1498,50 @@ document.getElementById('distance').addEventListener('change', function() {
 document.querySelectorAll('input[name=shakai]').forEach(r => {
   r.addEventListener('change', function() {
     const show = this.value === '1';
-    document.getElementById('pref-group').style.opacity = show ? '1' : '0.4';
-    document.getElementById('age-group').style.opacity = show ? '1' : '0.4';
-    // 社会保険未加入時は都道府県・年齢をポインターイベントも無効化
-    document.getElementById('pref-group').style.pointerEvents = show ? '' : 'none';
-    document.getElementById('age-group').style.pointerEvents = show ? '' : 'none';
+    // 都道府県・年齢区分・等級指定
+    ['pref-group', 'age-group', 'manual-grade-toggle-group'].forEach(id => {
+      document.getElementById(id).style.opacity = show ? '1' : '0.4';
+      document.getElementById(id).style.pointerEvents = show ? '' : 'none';
+    });
+    // 未加入時は等級セレクトも閉じる
+    if (!show) {
+      const chk = document.getElementById('manual-grade-chk');
+      const btn = document.getElementById('manual-grade-btn');
+      if (chk.checked) {
+        chk.checked = false;
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.fontWeight = '';
+        btn.style.boxShadow = '';
+        document.getElementById('manual-grade-group').style.display = 'none';
+      }
+    }
+  });
+});
+
+document.querySelectorAll('input[name=koyo]').forEach(r => {
+  r.addEventListener('change', function() {
+    const show = this.value === '1';
+    // 事業の種類・手動料率トグル・手動入力欄
+    ['koyo-type-group', 'koyo-manual-toggle-group'].forEach(id => {
+      document.getElementById(id).style.opacity = show ? '1' : '0.4';
+      document.getElementById(id).style.pointerEvents = show ? '' : 'none';
+    });
+    // 未加入時は手動料率入力欄も閉じる
+    if (!show) {
+      const chk = document.getElementById('manual-koyo-chk');
+      const btn = document.getElementById('manual-koyo-btn');
+      if (chk.checked) {
+        chk.checked = false;
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.fontWeight = '';
+        btn.style.boxShadow = '';
+        document.getElementById('manual-koyo-group').style.display = 'none';
+      }
+    }
   });
 });
 
@@ -1881,10 +1920,15 @@ function resetForm() {
   document.getElementById('manual-grade-group').style.display = 'none';
 
   // 社会保険の連動UIを加入状態に戻す
-  document.getElementById('pref-group').style.opacity = '1';
-  document.getElementById('pref-group').style.pointerEvents = '';
-  document.getElementById('age-group').style.opacity = '1';
-  document.getElementById('age-group').style.pointerEvents = '';
+  ['pref-group', 'age-group', 'manual-grade-toggle-group'].forEach(id => {
+    document.getElementById(id).style.opacity = '1';
+    document.getElementById(id).style.pointerEvents = '';
+  });
+  // 雇用保険の連動UIを加入状態に戻す
+  ['koyo-type-group', 'koyo-manual-toggle-group'].forEach(id => {
+    document.getElementById(id).style.opacity = '1';
+    document.getElementById(id).style.pointerEvents = '';
+  });
 
   // 結果エリアとエラーを隠す
   document.getElementById('result-area').classList.remove('show');
