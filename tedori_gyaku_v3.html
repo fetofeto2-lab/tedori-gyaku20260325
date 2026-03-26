@@ -227,6 +227,34 @@
     color: var(--text);
   }
 
+  /* その他控除行 */
+  .other-deduction-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 10px;
+  }
+  @media (max-width: 560px) {
+    .other-deduction-row { grid-template-columns: 1fr auto; }
+    .other-deduction-row .od-amount { grid-column: 1; }
+    .other-deduction-row .od-delete { grid-column: 2; grid-row: 1; align-self: start; margin-top: 24px; }
+  }
+  .od-delete {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-sub);
+    font-size: 1rem;
+    width: 36px;
+    height: 44px;
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .od-delete:hover { background: #fdecea; color: var(--danger); border-color: var(--danger); }
+
   /* 結果エリア */
   .result-area {
     display: none;
@@ -746,6 +774,19 @@
         <span class="hint">円 / 月（前年課税のため任意入力）</span>
       </div>
     </div>
+  </div>
+
+  <!-- その他控除 -->
+  <div class="card">
+    <div class="card-title">その他控除</div>
+    <div id="other-deductions-list"></div>
+    <button type="button" id="add-deduction-btn" onclick="addDeduction()"
+      style="margin-top:10px; background:none; border:1px dashed var(--border); border-radius:4px;
+             color:var(--accent); font-size:0.88rem; font-weight:500; padding:10px 16px;
+             width:100%; cursor:pointer; font-family:var(--sans);">
+      ＋ 項目を追加
+    </button>
+    <span class="hint" style="margin-top:6px; display:block;">給与天引きのその他控除項目（財形・組合費など）を追加できます</span>
   </div>
 
   <!-- 計算ボタン -->
@@ -1279,7 +1320,7 @@ function getGensen(A, fuyouNum) {
 
 // ===== 手取り計算（給与額→手取り）=====
 function calcTedori(kyuyo, params) {
-  const { shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, commuteNontax, juminzei, manualKenpo = null, manualKosei = null, manualKoyoRate = null, manualKoyoEmployerRate = null } = params;
+  const { shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, commuteNontax, juminzei, manualKenpo = null, manualKosei = null, manualKoyoRate = null, manualKoyoEmployerRate = null, otherDeductions = [] } = params;
 
   // 交通費の課税部分
   const commuteNontaxAmt = Math.min(commute, commuteNontax);
@@ -1332,7 +1373,8 @@ function calcTedori(kyuyo, params) {
   const kazeiKyuyo = kyuyo + commuteTaxable - shakaiTotal;
   const shotokuzei = getGensen(kazeiKyuyo, fuyouNum);
 
-  const tedori = soushikyu - shakaiTotal - shotokuzei - juminzei;
+  const otherTotal = otherDeductions.reduce((s, d) => s + d.amount, 0);
+  const tedori = soushikyu - shakaiTotal - shotokuzei - juminzei - otherTotal;
 
   // 会社負担額（参考）
   const hyojunKenpoC = (manualKenpo != null) ? manualKenpo : getHyojunHoshuKenpo(soushikyu);
@@ -1362,6 +1404,8 @@ function calcTedori(kyuyo, params) {
     kazeiKyuyo,
     shotokuzei,
     juminzei,
+    otherDeductions,
+    otherTotal,
     tedori,
     kenpoC,
     kaigoC,
@@ -1595,7 +1639,9 @@ function calculate() {
     manualKoyoEmployerRate = koyoRates.employer;
   }
 
-  const params = { shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, commuteNontax, juminzei, manualKenpo, manualKosei, manualKoyoRate, manualKoyoEmployerRate };
+  const otherDeductions = getOtherDeductions();
+
+  const params = { shakai, koyoFlg, pref, ageGroup, fuyouNum, commute, commuteNontax, juminzei, manualKenpo, manualKosei, manualKoyoRate, manualKoyoEmployerRate, otherDeductions };
 
   // モードによって計算方法を分岐
   let r;
@@ -1633,6 +1679,11 @@ function calculate() {
   if (r.koyo > 0) rows.push(['控除', '雇用保険料', -r.koyo]);
   rows.push(['控除', '所得税', -r.shotokuzei]);
   if (r.juminzei > 0) rows.push(['控除', '住民税（特別徴収）', -r.juminzei]);
+  if (r.otherDeductions && r.otherDeductions.length > 0) {
+    r.otherDeductions.forEach(d => {
+      rows.push(['控除', d.label, -d.amount]);
+    });
+  }
   rows.push(['手取り', '差引支給額（手取り）', r.tedori]);
 
   tbody.innerHTML = rows.map(([type, label, val]) => {
@@ -1769,6 +1820,58 @@ function copyResult() {
       btn.classList.remove('copied');
     }, 1500);
   });
+}
+
+// ===== その他控除 =====
+let deductionCount = 0;
+const MAX_DEDUCTIONS = 10;
+
+function addDeduction() {
+  if (deductionCount >= MAX_DEDUCTIONS) return;
+  deductionCount++;
+  const id = deductionCount;
+  const list = document.getElementById('other-deductions-list');
+  const row = document.createElement('div');
+  row.className = 'other-deduction-row';
+  row.id = `od-row-${id}`;
+  row.innerHTML = `
+    <div class="form-group">
+      <label>項目名</label>
+      <input type="text" id="od-label-${id}" value="その他" placeholder="その他">
+    </div>
+    <div class="form-group od-amount">
+      <label>金額（円）</label>
+      <input type="text" id="od-amount-${id}" placeholder="0" inputmode="numeric">
+    </div>
+    <button type="button" class="od-delete" onclick="removeDeduction(${id})" title="削除">×</button>
+  `;
+  list.appendChild(row);
+  // カンマ整形イベント
+  const amtEl = document.getElementById(`od-amount-${id}`);
+  amtEl.addEventListener('input', () => formatInput(amtEl));
+  amtEl.addEventListener('blur',  () => formatInput(amtEl));
+  // 追加上限に達したらボタンをグレーアウト
+  document.getElementById('add-deduction-btn').style.opacity =
+    deductionCount >= MAX_DEDUCTIONS ? '0.4' : '1';
+}
+
+function removeDeduction(id) {
+  const row = document.getElementById(`od-row-${id}`);
+  if (row) row.remove();
+  document.getElementById('add-deduction-btn').style.opacity = '1';
+}
+
+function getOtherDeductions() {
+  // 現在表示中の行から項目名・金額を収集
+  const rows = document.querySelectorAll('#other-deductions-list .other-deduction-row');
+  const result = [];
+  rows.forEach(row => {
+    const id = row.id.replace('od-row-', '');
+    const label = document.getElementById(`od-label-${id}`).value.trim() || 'その他';
+    const amount = parseInt((document.getElementById(`od-amount-${id}`).value || '').replace(/,/g, '')) || 0;
+    if (amount > 0) result.push({ label, amount });
+  });
+  return result;
 }
 
 // ===== 雇用保険：業種変更時にヒント更新 =====
@@ -1943,6 +2046,11 @@ function resetForm() {
   if (burdenIcon) burdenIcon.textContent = '▶';
   const burdenToggle = document.getElementById('burden-toggle');
   if (burdenToggle) burdenToggle.innerHTML = '▶　会社負担額（参考）を表示';
+
+  // その他控除をリセット
+  document.getElementById('other-deductions-list').innerHTML = '';
+  deductionCount = 0;
+  document.getElementById('add-deduction-btn').style.opacity = '1';
 
   // target欄にフォーカス
   document.getElementById('target').focus();
